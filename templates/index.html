@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+   <meta charset="UTF-8">
+
+    <title>Environmental monitoring system</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card { background: #f5f5f5; padding: 20px; border-radius: 10px; }
+        .warning { color: red; font-weight: bold; }
+
+      .alert {
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: 5px;
+        color: white;
+        background: #ff4444;  
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        opacity: 0.9;
+    }
+
+    /* Temperature warning (optional classification color) */
+    .alert[data-type="temperature"] {
+        background: #ff4444;  
+    }
+
+    /* Humidity Warning */
+    .alert[data-type="humidity"] {
+        background: #2196F3;  
+    }
+
+    /* Barometric Pressure Warning */
+    .alert[data-type="pressure"] {
+        background: #4CAF50;  
+    }
+
+    /* Admission Animation */
+    @keyframes slideIn {
+        from { transform: translateX(100%); }
+        to { transform: translateX(0); }
+    }
+
+    @keyframes fadeOut {
+        from { opacity: 0.9; }
+        to { opacity: 0; }
+    </style>
+</head>
+<body>
+    <h1><Environmental monitoring dashboards/h1>
+    <-- Real-time data display -->
+    <div class="dashboard">
+        <div class="card">
+            <h2>Current data</h2>
+            <p>Temperature: <span id="temperature">--</span>°C</p>
+            <p>Humidity: <span id="humidity">--</span>%</p>
+            <p>Atmospheric pressure:<span id="pressure">--</span>hPa</p>
+            <p>Updated:<span id="timestamp">--</span></p>
+        </div>
+        
+       <!-- Historical temperature chart -->
+        <div class="card">
+            <h2>24-hour temperature change</h2>
+            <canvas id="temperatureChart"></canvas>
+        </div>
+    </div>
+    <div class="card">
+    <h2>Threshold settings</h2>
+    <form id="thresholdForm" >
+        <div>
+            <label> Temperature Range (°C):
+                <input type="number" id="minTemp" step="0.1" placeholder="min">
+                <input type="number" id="maxTemp" step="0.1" placeholder="max">
+            </label>
+        </div>
+        <div
+            <label>Humidity Range (%):
+                <input type="number" id="minHumidity" step="1" placeholder="min">
+                <input type="number" id="maxHumidity" step="1" placeholder="max">
+            </label>
+        </div>
+        <div>
+            <label>Barometric pressure range (hPa):
+                <input type="number" id="minPressure" step="1" placeholder="min">
+                <input type="number" id="maxPressure" step="1" placeholder="max">
+            </label>
+        </div>
+        <button type="submit">Save the settings</button>
+    </form>
+</div>
+<div class="card" style="background: #f9f9f9; border-left: 4px solid #4CAF50;">
+    <h2 style="color: #333; font-size: 20px;">Data Analysis and Prediction</h2>
+
+    <div style="margin-top: 8px; font-size: 14px;">
+        <strong>Current Trend:</strong>
+        <span id="trend" style="font-weight: bold; color: #1b5e20;">--</span>
+    </div>
+
+    <div style="margin-top: 6px; font-size: 14px;">
+        <strong>Predicted Temperature (1 hour later):</strong>
+        <span id="predicted" style="font-weight: bold;">--</span>°C
+    </div>
+
+    <div style="margin-top: 6px; font-size: 14px;">
+        <strong>Temperature Spikes (>3°C):</strong>
+        <div style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 8px; background: #fff; border-radius: 6px;">
+    <ul id="spikeList" style="margin: 0; padding-left: 20px;"></ul>
+</div>
+    </div>
+     <div style="margin-top: 6px; font-size: 14px;">
+        <strong>Predicted Time to Max Temperature:</strong>
+        <span id="time-to-max" style="font-weight: bold;">--</span>
+    </div>
+    <div style="margin-top: 6px; font-size: 14px;">
+        <strong>Predicted Time to Min Temperature:</strong>
+        <span id="time-to-min" style="font-weight: bold;">--</span>
+    </div>
+</div>
+
+
+   <div id="alertContainer"></div>
+
+
+
+   
+<script>
+    
+    fetch('/api/settings')
+        .then(response => response.json())
+        .then(settings => {
+            document.getElementById('minTemp').value = settings.min_temp;
+            document.getElementById('maxTemp').value = settings.max_temp;
+            document.getElementById('minHumidity').value = settings.min_humidity;
+            document.getElementById('maxHumidity').value = settings.max_humidity;
+            document.getElementById('minPressure').value = settings.min_pressure;
+            document.getElementById('maxPressure').value = settings.max_pressure;
+        });
+
+   //Submission threshold settings
+    document.getElementById('thresholdForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const formData = {
+            min_temp: parseFloat(document.getElementById('minTemp').value),
+            max_temp: parseFloat(document.getElementById('maxTemp').value),
+            min_humidity: parseFloat(document.getElementById('minHumidity').value),
+            max_humidity: parseFloat(document.getElementById('maxHumidity').value),
+            min_pressure: parseFloat(document.getElementById('minPressure').value),
+            max_pressure: parseFloat(document.getElementById('maxPressure').value)
+        };
+        fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+        })
+        .then(response => alert('Settings saved!'))
+        .catch(error => console.error('Save failed:', error));
+    });
+</script>
+
+
+    <script>
+        // Initialize the chart
+        const ctx = document.getElementById('temperatureChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Temperature (°C)',
+                    data: [],
+                    borderColor: 'rgb(255, 99, 132)',
+                    tension: 0.1
+                }]
+            }
+        });
+
+function updateCurrentData() {
+    fetch('/api/current')
+        .then(response => response.json())
+        .then(data => {
+            // Update real-time data
+            document.getElementById('temperature').textContent = data.temperature.toFixed(1);
+            document.getElementById('humidity').textContent = data.humidity.toFixed(1);
+            document.getElementById('pressure').textContent = data.pressure.toFixed(1);
+            document.getElementById('timestamp').textContent = data.timestamp;
+
+            // Clear old warnings
+            const alertContainer = document.getElementById('alertContainer');
+            alertContainer.innerHTML = '';  
+
+            // Displays an alarm or normal prompt
+            if (data.alerts && data.alerts.length > 0) {
+                data.alerts.forEach(alertType => {
+                    const alertDiv = document.createElement('div');
+                    alertDiv.className = 'alert';
+                    alertDiv.style.backgroundColor = '#d60000'; 
+                    alertDiv.style.color = '#fff';
+                    alertDiv.style.padding = '20px';
+                    alertDiv.style.fontSize = '30px';
+                    alertDiv.style.borderRadius = '10px';
+                    alertDiv.style.marginTop = '5px';
+                    alertDiv.textContent = `⚠️ ${alertType.toUpperCase()}The threshold is exceeded！`;
+                    alertDiv.style.animation = 'slideIn 0.5s, fadeOut 2s 3s forwards';
+                    alertContainer.appendChild(alertDiv);
+                });
+            } else {
+                const normalDiv = document.createElement('div');
+                normalDiv.className = 'normal';
+                normalDiv.style.backgroundColor = '#00a000'; 
+                normalDiv.style.color = '#fff';
+                normalDiv.style.padding = '20px';
+                normalDiv.style.fontSize = '30px';
+                normalDiv.style.borderRadius = '10px';
+                normalDiv.textContent = '✅ The current status is normal';
+                alertContainer.appendChild(normalDiv);
+            }
+        })
+        .catch(error => console.error('Fetch data failed:', error));
+}
+
+
+
+        //Historical data updates
+function updateHistoryData() {
+    fetch('/api/history')
+        .then(response => response.json())
+        .then(data => {
+            chart.data.labels = data.map(item => item.time); // 或 item.time
+            chart.data.datasets[0].data = data.map(item => item.value);
+            chart.update();
+        })
+        .catch(error => console.error('Fetch Historical Data Failed:', error));
+}
+
+
+        // Refresh every 5 seconds
+        setInterval(() => {
+            updateCurrentData();
+            updateHistoryData();
+            updateAnalysisData();
+        }, 5000);
+
+        
+        updateCurrentData();
+        updateHistoryData();
+        updateAnalysisData();
+        
+function updateAnalysisData() {
+    fetch('/api/analysis')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('trend').textContent = 'Insufficient data';
+                return;
+            }
+
+            document.getElementById('trend').textContent = data.trend;
+            document.getElementById('predicted').textContent = data.predicted_temp;
+
+            // Update temperature spike list
+            const spikeList = document.getElementById('spikeList');
+            spikeList.innerHTML = '';
+            if (data.spikes && data.spikes.length > 0) {
+                data.spikes.forEach(spike => {
+                    const li = document.createElement('li');
+                    li.textContent = `${spike.time}（variation ${spike.delta.toFixed(1)}°C）`;
+                    spikeList.appendChild(li);
+                });
+            } else {
+                const li = document.createElement('li');
+                li.textContent = 'There were no significant mutations';
+                spikeList.appendChild(li);
+            }
+
+            // Add prediction time data
+            document.getElementById('time-to-max').textContent = data.time_to_max || 'Not predicted yet';
+            document.getElementById('time-to-min').textContent = data.time_to_min || 'Not predicted yet';
+        })
+        .catch(error => console.error('Analysis data load failed:', error));
+}
+
+    </script>
+
+</body>
+
+
+
+
+</html>
